@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>iTapzPlays – Stream Overlay</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: transparent;
+    font-family: 'Inter', sans-serif;
+    display: flex;
+    padding: 16px;
+    min-height: 100vh;
+    align-items: var(--valign, flex-start);
+    justify-content: var(--halign, flex-start);
+  }
+
+  @keyframes widgetIn {
+    from { opacity: 0; transform: translateY(-8px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .widget {
+    background: var(--bg, rgba(0,0,0,0.92));
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: var(--radius, 14px);
+    padding: 14px 18px;
+    min-width: 220px;
+    max-width: 280px;
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    box-shadow:
+      0 8px 32px rgba(0,0,0,0.6),
+      0 1px 0 rgba(255,255,255,0.08) inset,
+      0 0 0 1px rgba(255,255,255,0.04);
+    animation: widgetIn 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* Each section wraps row + divider so hiding one hides both */
+  .section { display: flex; flex-direction: column; opacity: 0; animation: sectionIn 0.45s ease forwards; }
+  .section.hidden { display: none; }
+  .section-inner { display: flex; align-items: center; gap: 9px; font-size: 13px; padding: 10px 0; transition: padding 0.2s; }
+  .section-inner.top { align-items: flex-start; }
+  .divider { border: none; border-top: 1px solid rgba(255,255,255,0.07); margin: 0; }
+
+  @keyframes sectionIn {
+    from { opacity: 0; transform: translateX(-6px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+  #sec-time     { animation-delay: 0.05s; }
+  #sec-location { animation-delay: 0.10s; }
+  #sec-weather  { animation-delay: 0.15s; }
+  #sec-kick     { animation-delay: 0.20s; }
+  #sec-twitch   { animation-delay: 0.25s; }
+  #sec-youtube  { animation-delay: 0.30s; }
+  #sec-goals    { animation-delay: 0.35s; }
+
+  .icon { width: 18px; height: 18px; flex-shrink: 0; transition: transform 0.3s ease, filter 0.3s ease; }
+  .icon-clock  { color: #7eb8f7; filter: drop-shadow(0 0 4px rgba(126,184,247,0.4)) drop-shadow(0 1px 2px rgba(0,0,0,0.8)); }
+  .icon-pin    { color: #f76e6e; filter: drop-shadow(0 0 4px rgba(247,110,110,0.4)) drop-shadow(0 1px 2px rgba(0,0,0,0.8)); }
+  .icon-sun    { color: #f7c948; filter: drop-shadow(0 0 4px rgba(247,201,72,0.4)) drop-shadow(0 1px 2px rgba(0,0,0,0.8)); }
+  .section-inner:hover .icon { transform: scale(1.1) rotate(-4deg); }
+
+  @keyframes valueFlash {
+    0%   { color: #53e07b; text-shadow: 0 0 8px rgba(83,224,123,0.6); }
+    100% { color: inherit; text-shadow: none; }
+  }
+  .value.flash { animation: valueFlash 0.8s ease; }
+
+  .label {
+    color: rgba(255,255,255,0.6);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 1px;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.6);
+  }
+
+  .value {
+    color: #fff;
+    font-weight: 700;
+    font-size: 13px;
+    line-height: 1.2;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.6);
+  }
+  .stats-row { display: flex; gap: 12px; flex-wrap: wrap; padding: 10px 0; }
+  .stat-block { display: flex; flex-direction: column; }
+
+  #location-toggle {
+    background: rgba(255,255,255,0.06);
+    border: none; color: rgba(255,255,255,0.5);
+    font-size: 10px; border-radius: 5px;
+    padding: 2px 7px; cursor: pointer;
+    align-self: flex-end; margin-top: -4px;
+    transition: background 0.2s, transform 0.15s, color 0.2s;
+  }
+  #location-toggle:hover { background: rgba(255,255,255,0.14); color: rgba(255,255,255,0.8); }
+  #location-toggle:active { transform: scale(0.93); }
+
+  .live-dot {
+    display: inline-block; width: 7px; height: 7px;
+    border-radius: 50%; background: #53e07b;
+    margin-right: 5px;
+    box-shadow: 0 0 6px rgba(83,224,123,0.7);
+    animation: pulse 1.8s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%      { opacity: 0.4; transform: scale(0.85); }
+  }
+
+  .kick-color   { color: #53c21e; }
+  .twitch-color { color: #9147ff; }
+  .yt-color     { color: #ff4444; }
+
+  /* Goal bars */
+  .goals-wrap { padding: 10px 0; display: flex; flex-direction: column; gap: 8px; }
+  .goal-block { display: flex; flex-direction: column; gap: 4px; }
+  .goal-label-row { display: flex; justify-content: space-between; align-items: center; }
+  .goal-bar-bg { width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; }
+  .goal-bar-fill {
+    height: 100%; border-radius: 3px;
+    background: linear-gradient(90deg, #3d9416, #53c21e, #6fe33a);
+    background-size: 200% 100%;
+    transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+    animation: shimmer 3s linear infinite;
+  }
+  @keyframes shimmer { 0% { background-position: 0% 0; } 100% { background-position: 200% 0; } }
+  .goal-pct { font-size: 10px; color: rgba(255,255,255,0.4); }
+
+  /* Alert popup */
+  @keyframes alertBounceIn {
+    0%   { opacity: 0; transform: translateX(-50%) translateY(-16px) scale(0.85); }
+    60%  { opacity: 1; transform: translateX(-50%) translateY(2px) scale(1.03); }
+    100% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  }
+  @keyframes alertGlowPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(83,194,30,0.4), 0 8px 24px rgba(0,0,0,0.4); }
+    50%      { box-shadow: 0 0 0 6px rgba(83,194,30,0.12), 0 8px 24px rgba(0,0,0,0.4); }
+  }
+  .alert-popup {
+    position: fixed; top: 16px; left: 50%;
+    background: rgba(12,12,16,0.95);
+    border: 1px solid rgba(83,194,30,0.5);
+    border-radius: 12px; padding: 10px 20px;
+    color: #fff; font-family: 'Inter', sans-serif;
+    font-size: 13px; font-weight: 600;
+    display: flex; align-items: center; gap: 8px;
+    opacity: 0;
+    pointer-events: none; z-index: 9999; white-space: nowrap;
+    transform: translateX(-50%) translateY(-16px) scale(0.85);
+  }
+  .alert-popup.show {
+    animation: alertBounceIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
+               alertGlowPulse 1.6s ease-in-out 0.5s infinite;
+  }
+  .alert-icon { font-size: 18px; display: inline-block; animation: iconBob 0.6s ease-in-out infinite; }
+  @keyframes iconBob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+
+  /* Alert popup exit */
+  @keyframes alertOut {
+    from { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+    to   { opacity: 0; transform: translateX(-50%) translateY(-10px) scale(0.92); }
+  }
+  .alert-popup.hide { animation: alertOut 0.3s ease forwards; }
+
+  /* Login */
+  .login-wrap { padding: 8px 0; }
+  .login-btn {
+    background: #53c21e; border: none; border-radius: 8px;
+    color: #fff; font-weight: 700; font-size: 12px;
+    padding: 8px 14px; cursor: pointer; width: 100%;
+    transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+  }
+  .login-btn:hover { background: #5dd622; box-shadow: 0 0 16px rgba(83,194,30,0.4); }
+  .login-btn:active { transform: scale(0.97); }
+  .connected-badge { font-size: 10px; color: #53e07b; text-align: center; display: none; padding: 4px 0; }
+</style>
+</head>
+<body>
+
+<div class="widget" id="widget">
+
+  <!-- Time -->
+  <div class="section" id="sec-time">
+    <div class="section-inner">
+      <svg class="icon icon-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+      </svg>
+      <div>
+        <div class="label">Local Time</div>
+        <div class="value" id="time">--:-- --</div>
+      </div>
+    </div>
+    <hr class="divider" />
+  </div>
+
+  <!-- Location -->
+  <div class="section" id="sec-location">
+    <div class="section-inner top">
+      <svg class="icon icon-pin" style="margin-top:4px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+      </svg>
+      <div style="flex:1">
+        <div class="label">Location</div>
+        <div class="value" id="location">Locating…</div>
+        <button id="location-toggle" onclick="cyclePrivacy()">city</button>
+      </div>
+    </div>
+    <hr class="divider" />
+  </div>
+
+  <!-- Weather -->
+  <div class="section" id="sec-weather">
+    <div class="section-inner">
+      <svg class="icon icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="5"/>
+        <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+        <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+      </svg>
+      <div>
+        <div class="label">Weather</div>
+        <div class="value" id="weather">--</div>
+      </div>
+    </div>
+    <hr class="divider" />
+  </div>
+
+  <!-- Kick stats -->
+  <div class="section" id="sec-kick">
+    <div class="stats-row">
+      <div class="stat-block" id="block-followers">
+        <div class="label"><span class="live-dot"></span>Followers</div>
+        <div class="value kick-color" id="followers">--</div>
+      </div>
+      <div class="stat-block" id="block-subs">
+        <div class="label"><span class="live-dot"></span>Subs</div>
+        <div class="value kick-color" id="subs">--</div>
+      </div>
+    </div>
+    <hr class="divider" />
+  </div>
+
+  <!-- Twitch stats -->
+  <div class="section" id="sec-twitch">
+    <div class="stats-row">
+      <div class="stat-block">
+        <div class="label">
+          <svg style="width:10px;height:10px;vertical-align:middle;margin-right:3px" viewBox="0 0 24 24" fill="#9147ff"><path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714z"/></svg>
+          Twitch Follows
+        </div>
+        <div class="value twitch-color" id="twitch-followers">--</div>
+      </div>
+      <div class="stat-block" id="block-twitch-subs">
+        <div class="label">Twitch Subs</div>
+        <div class="value twitch-color" id="twitch-subs">--</div>
+      </div>
+    </div>
+    <hr class="divider" />
+  </div>
+
+  <!-- YouTube stats -->
+  <div class="section" id="sec-youtube">
+    <div class="stats-row">
+      <div class="stat-block">
+        <div class="label">
+          <svg style="width:10px;height:10px;vertical-align:middle;margin-right:3px" viewBox="0 0 24 24" fill="#ff0000"><path d="M23.495 6.205a3.007 3.007 0 0 0-2.088-2.088c-1.87-.501-9.396-.501-9.396-.501s-7.507-.01-9.396.501A3.007 3.007 0 0 0 .527 6.205a31.247 31.247 0 0 0-.522 5.805 31.247 31.247 0 0 0 .522 5.783 3.007 3.007 0 0 0 2.088 2.088c1.868.502 9.396.502 9.396.502s7.506 0 9.396-.502a3.007 3.007 0 0 0 2.088-2.088 31.247 31.247 0 0 0 .5-5.783 31.247 31.247 0 0 0-.5-5.805zM9.609 15.601V8.408l6.264 3.602z"/></svg>
+          YT Subs
+        </div>
+        <div class="value yt-color" id="yt-subs">--</div>
+      </div>
+      <div class="stat-block">
+        <div class="label">YT Members</div>
+        <div class="value yt-color" id="yt-members">--</div>
+      </div>
+    </div>
+    <hr class="divider" />
+  </div>
+
+  <!-- Goals -->
+  <div class="section" id="sec-goals">
+    <div class="goals-wrap">
+      <div class="goal-block">
+        <div class="goal-label-row">
+          <div class="label">Follower Goal</div>
+          <div class="goal-pct" id="follower-goal-pct">0%</div>
+        </div>
+        <div class="goal-bar-bg"><div class="goal-bar-fill" id="follower-goal-bar" style="width:0%"></div></div>
+        <div class="label" id="follower-goal-label">0 / 100</div>
+      </div>
+      <div class="goal-block">
+        <div class="goal-label-row">
+          <div class="label">Sub Goal</div>
+          <div class="goal-pct" id="sub-goal-pct">0%</div>
+        </div>
+        <div class="goal-bar-bg"><div class="goal-bar-fill" id="sub-goal-bar" style="width:0%"></div></div>
+        <div class="label" id="sub-goal-label">0 / 10</div>
+      </div>
+    </div>
+    <hr class="divider" />
+  </div>
+
+  <!-- Login (hidden on stream; visit with ?login=1 to access) -->
+  <div id="login-controls" style="display:none">
+    <div class="login-wrap">
+      <button class="login-btn" id="login-btn" onclick="kickLogin()">🔗 Connect Kick Chat</button>
+      <div class="connected-badge" id="connected-badge">✅ Chat connected</div>
+    </div>
+
+    <div class="login-wrap">
+      <button class="login-btn" id="yt-login-btn" onclick="youtubeLogin()" style="background:#ff0000">▶️ Connect YouTube</button>
+      <div class="connected-badge" id="yt-connected-badge">✅ YouTube connected</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Alert popup -->
+<div class="alert-popup" id="alert-popup">
+  <span class="alert-icon" id="alert-icon">🎉</span>
+  <span id="alert-text">Someone followed!</span>
+</div>
+
+<script>
+  // ── Config ─────────────────────────────────────────────
+  const KICK_USERNAME    = 'iTapzPlays';
+  const CLIENT_ID        = '01KV6MVDV42AZ987CB6V0VGRWT';
+  const REDIRECT_URI     = 'https://itapzplays.github.io/stream-overlay/itapzplays-overlay.html';
+  const WORKER_URL       = 'https://icy-butterfly-8b83.itapzplays.workers.dev';
+  const TWITCH_USERNAME  = 'iTapzPlays';
+  const YT_API_KEY       = 'AIzaSyA58oBlumO_Arr4Vcf2kOw4BILbkwrqzPg';
+  const YT_CHANNEL_HANDLE = 'iTapzPlays'; // without @
+  const YT_OAUTH_CLIENT_ID = '134202338742-7sc39r3t4qii1uht4p7ha5meukejr100.apps.googleusercontent.com';
+
+  // ── State ──────────────────────────────────────────────
+  const PRIVACY_LEVELS = ['city', 'country', 'exact'];
+  let privacyIdx = 0, coords = null, lastAddress = null;
+  let weatherLang = 'en', timeFormat = '12s';
+  let followerGoal = 100, subGoal = 10;
+  let lastFollowers = null, lastSubs = null;
+  let lastTwitchFollowers = null, lastTwitchSubs = null;
+  let geoRetryTimer = null, alertSoundUrl = '';
+  let ytChannelId = null;
+  let ytMemberCount = 0;
+  let ytLiveChatId = null;
+  let ytNextPageToken = null;
+  let ytPollTimer = null;
+
+  // ── Weather codes ──────────────────────────────────────
+  const WMO = {
+    en:{0:'Clear Sky',1:'Mostly Clear',2:'Partly Cloudy',3:'Overcast',45:'Foggy',48:'Icy Fog',51:'Light Drizzle',53:'Drizzle',55:'Heavy Drizzle',61:'Light Rain',63:'Rain',65:'Heavy Rain',71:'Light Snow',73:'Snow',75:'Heavy Snow',80:'Showers',81:'Rain Showers',82:'Heavy Showers',95:'Thunderstorm',96:'Thunderstorm',99:'Thunderstorm'},
+    fr:{0:'Ciel Dégagé',1:'Plutôt Dégagé',2:'Partiellement Nuageux',3:'Couvert',45:'Brouillard',51:'Bruine Légère',53:'Bruine',61:'Pluie Légère',63:'Pluie',65:'Forte Pluie',71:'Neige Légère',73:'Neige',80:'Averses',95:'Orage'},
+    es:{0:'Cielo Despejado',1:'Mayormente Despejado',2:'Parcialmente Nublado',3:'Nublado',45:'Niebla',51:'Llovizna Ligera',53:'Llovizna',61:'Lluvia Ligera',63:'Lluvia',65:'Lluvia Fuerte',71:'Nieve Ligera',73:'Nieve',80:'Chubascos',95:'Tormenta'},
+    pt:{0:'Céu Limpo',1:'Maioritariamente Limpo',2:'Parcialmente Nublado',3:'Nublado',45:'Nevoeiro',51:'Chuvisco Leve',53:'Chuvisco',61:'Chuva Leve',63:'Chuva',65:'Chuva Forte',71:'Neve Leve',73:'Neve',80:'Aguaceiros',95:'Trovoada'},
+    de:{0:'Klarer Himmel',1:'Meist Klar',2:'Teilweise Bewölkt',3:'Bedeckt',45:'Nebel',51:'Leichter Nieselregen',53:'Nieselregen',61:'Leichter Regen',63:'Regen',65:'Starker Regen',71:'Leichter Schnee',73:'Schnee',80:'Schauer',95:'Gewitter'},
+    it:{0:'Cielo Sereno',1:'Per lo più Sereno',2:'Parzialmente Nuvoloso',3:'Nuvoloso',45:'Nebbia',51:'Pioggerella Leggera',53:'Pioggerella',61:'Pioggia Leggera',63:'Pioggia',65:'Pioggia Forte',71:'Neve Leggera',73:'Neve',80:'Rovesci',95:'Temporale'},
+    ja:{0:'快晴',1:'ほぼ晴れ',2:'一部曇り',3:'曇り',45:'霧',51:'小雨',53:'霧雨',61:'小雨',63:'雨',65:'大雨',71:'小雪',73:'雪',80:'にわか雨',95:'雷雨'},
+    ko:{0:'맑음',1:'대체로 맑음',2:'부분적으로 흐림',3:'흐림',45:'안개',51:'가벼운 이슬비',53:'이슬비',61:'가벼운 비',63:'비',65:'강한 비',71:'가벼운 눈',73:'눈',80:'소나기',95:'뇌우'},
+    nl:{0:'Heldere Hemel',1:'Grotendeels Helder',2:'Gedeeltelijk Bewolkt',3:'Bewolkt',45:'Mist',51:'Lichte Motregen',53:'Motregen',61:'Lichte Regen',63:'Regen',65:'Zware Regen',71:'Lichte Sneeuw',73:'Sneeuw',80:'Buien',95:'Onweer'},
+    ru:{0:'Ясно',1:'В основном ясно',2:'Переменная облачность',3:'Пасмурно',45:'Туман',51:'Лёгкая морось',53:'Морось',61:'Лёгкий дождь',63:'Дождь',65:'Сильный дождь',71:'Лёгкий снег',73:'Снег',80:'Ливень',95:'Гроза'},
+    zh:{0:'晴天',1:'大部晴天',2:'局部多云',3:'阴天',45:'雾',51:'小毛毛雨',53:'毛毛雨',61:'小雨',63:'雨',65:'大雨',71:'小雪',73:'雪',80:'阵雨',95:'雷雨'},
+    ar:{0:'صافٍ',1:'صافٍ في الغالب',2:'غائم جزئياً',3:'غائم',45:'ضباب',51:'رذاذ خفيف',53:'رذاذ',61:'مطر خفيف',63:'مطر',65:'مطر غزير',71:'ثلج خفيف',73:'ثلج',80:'زخات',95:'عاصفة رعدية'},
+    tr:{0:'Açık',1:'Çoğunlukla Açık',2:'Parçalı Bulutlu',3:'Bulutlu',45:'Sisli',51:'Hafif Çisenti',53:'Çisenti',61:'Hafif Yağmur',63:'Yağmur',65:'Yoğun Yağmur',71:'Hafif Kar',73:'Kar',80:'Sağanak',95:'Fırtına'},
+    sv:{0:'Klart',1:'Mestadels Klart',2:'Delvis Molnigt',3:'Mulet',45:'Dimma',51:'Lätt Duggregn',53:'Duggregn',61:'Lätt Regn',63:'Regn',65:'Kraftigt Regn',71:'Lätt Snö',73:'Snö',80:'Skurar',95:'Åska'},
+    pl:{0:'Bezchmurnie',1:'Przeważnie Bezchmurnie',2:'Częściowe Zachmurzenie',3:'Pochmurno',45:'Mgła',51:'Lekka Mżawka',53:'Mżawka',61:'Lekki Deszcz',63:'Deszcz',65:'Ulewny Deszcz',71:'Lekki Śnieg',73:'Śnieg',80:'Przelotne Opady',95:'Burza'}
+  };
+
+  // ── Login controls visibility ──────────────────────────
+  // Visit overlay with ?login=1 once to reveal connect buttons; persists in
+  // localStorage through OAuth redirects so it survives the round-trip.
+  (function initLoginControls() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('login') === '1') localStorage.setItem('show_login_controls', '1');
+    if (localStorage.getItem('show_login_controls') === '1') {
+      document.getElementById('login-controls').style.display = '';
+    }
+  })();
+  function hideLoginControls() {
+    localStorage.removeItem('show_login_controls');
+    document.getElementById('login-controls').style.display = 'none';
+  }
+  function updateClock() {
+    const now = new Date();
+    let str;
+    if      (timeFormat === '12')  str = now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    else if (timeFormat === '12s') str = now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    else if (timeFormat === '24')  str = now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',hour12:false});
+    else                           str = now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+    document.getElementById('time').textContent = str;
+  }
+  updateClock();
+  setInterval(updateClock, 1000);
+
+  // ── Settings ───────────────────────────────────────────
+  function setWeatherLang(v) {
+    weatherLang = v;
+    if (coords) fetchWeather(coords.lat, coords.lon);
+  }
+  function setPosition(pos) {
+    const map = {
+      'top-left':     ['flex-start','flex-start'],
+      'top-right':    ['flex-start','flex-end'],
+      'bottom-left':  ['flex-end','flex-start'],
+      'bottom-right': ['flex-end','flex-end'],
+    };
+    const [v, h] = map[pos] || map['top-left'];
+    document.body.style.setProperty('--valign', v);
+    document.body.style.setProperty('--halign', h);
+  }
+
+  // ── Section toggle ─────────────────────────────────────
+  function toggleSection(id) {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('hidden');
+  }
+
+  // ── Privacy ────────────────────────────────────────────
+  function cyclePrivacy() {
+    privacyIdx = (privacyIdx + 1) % PRIVACY_LEVELS.length;
+    const level = PRIVACY_LEVELS[privacyIdx];
+    document.getElementById('location-toggle').textContent = level;
+    if (lastAddress) displayLocation(lastAddress, level);
+  }
+
+  function displayLocation(address, level) {
+    const locEl = document.getElementById('location');
+    if (!address) { locEl.textContent = 'Locating…'; return; }
+    if (level === 'exact') {
+      const road = address.road || '';
+      const city = address.city || address.town || address.village || '';
+      locEl.textContent = road ? `${road}, ${city}` : city || 'Unknown';
+    } else if (level === 'city') {
+      const city = address.city || address.town || address.village || address.county || 'Unknown';
+      const state = address.state || '';
+      locEl.textContent = state ? `${city}, ${state}` : city;
+    } else {
+      locEl.textContent = address.country || 'Unknown';
+    }
+  }
+
+  // ── Geolocation ────────────────────────────────────────
+  function geoError() {
+    document.getElementById('location').textContent = 'Locating…';
+    if (geoRetryTimer) clearTimeout(geoRetryTimer);
+    geoRetryTimer = setTimeout(() => {
+      navigator.geolocation.getCurrentPosition(geoSuccess, geoError, {
+        enableHighAccuracy: true, maximumAge: 10000, timeout: 5000
+      });
+    }, 2000);
+  }
+
+  async function geoSuccess(pos) {
+    const lat = pos.coords.latitude, lon = pos.coords.longitude;
+    const moved = !coords || Math.abs(coords.lat-lat)>0.001 || Math.abs(coords.lon-lon)>0.001;
+    if (moved) {
+      coords = { lat, lon };
+      try {
+        const r = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`);
+        const d = await r.json();
+        lastAddress = d.address;
+        displayLocation(lastAddress, PRIVACY_LEVELS[privacyIdx]);
+      } catch { document.getElementById('location').textContent = 'Locating…'; }
+      fetchWeather(lat, lon);
+    }
+  }
+
+  if (navigator.geolocation) {
+    navigator.geolocation.watchPosition(geoSuccess, geoError, {
+      enableHighAccuracy: true, maximumAge: 10000, timeout: 5000
+    });
+  } else {
+    document.getElementById('location').textContent = 'GPS unavailable';
+  }
+
+  // ── Weather ────────────────────────────────────────────
+  async function fetchWeather(lat, lon) {
+    try {
+      const r = await fetch(
+        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode&temperature_unit=celsius`
+      );
+      const d = await r.json();
+      const c = d.current;
+      const tempC = Math.round(c.temperature_2m);
+      const tempF = Math.round(tempC * 9/5 + 32);
+      const codes = WMO[weatherLang] || WMO.en;
+      const desc = codes[c.weathercode] || 'Unknown';
+      document.getElementById('weather').textContent = `${tempC}°C / ${tempF}°F · ${desc}`;
+    } catch {}
+  }
+  setInterval(() => { if (coords) fetchWeather(coords.lat, coords.lon); }, 5 * 60 * 1000);
+
+  // ── Alert ──────────────────────────────────────────────
+  let alertTimer = null;
+  function showAlert(icon, text) {
+    const popup = document.getElementById('alert-popup');
+    document.getElementById('alert-icon').textContent = icon;
+    document.getElementById('alert-text').textContent = text;
+    popup.classList.remove('hide');
+    popup.classList.add('show');
+    if (alertTimer) clearTimeout(alertTimer);
+    alertTimer = setTimeout(() => {
+      popup.classList.remove('show');
+      popup.classList.add('hide');
+    }, 4000);
+    if (alertSoundUrl) {
+      try {
+        const audio = new Audio(alertSoundUrl);
+        audio.crossOrigin = 'anonymous';
+        audio.play().catch(() => {});
+      } catch {}
+    }
+  }
+
+  // ── Value flash on update ──────────────────────────────
+  function flashValue(el) {
+    if (!el) return;
+    el.classList.remove('flash');
+    void el.offsetWidth; // restart animation
+    el.classList.add('flash');
+  }
+
+  // ── Goals ──────────────────────────────────────────────
+  function updateGoals(followers, subs) {
+    if (typeof followers === 'number') {
+      const pct = Math.min(100, Math.round((followers / followerGoal) * 100));
+      document.getElementById('follower-goal-bar').style.width = pct + '%';
+      document.getElementById('follower-goal-pct').textContent = pct + '%';
+      document.getElementById('follower-goal-label').textContent = `${formatNum(followers)} / ${formatNum(followerGoal)}`;
+    }
+    if (typeof subs === 'number') {
+      const pct = Math.min(100, Math.round((subs / subGoal) * 100));
+      document.getElementById('sub-goal-bar').style.width = pct + '%';
+      document.getElementById('sub-goal-pct').textContent = pct + '%';
+      document.getElementById('sub-goal-label').textContent = `${subs} / ${subGoal}`;
+    }
+  }
+
+  // ── Kick stats ─────────────────────────────────────────
+  async function fetchKickStats() {
+    try {
+      const r = await fetch(`https://kick.com/api/v2/channels/${KICK_USERNAME}`, {
+        headers: { 'Accept': 'application/json' }
+      });
+      if (!r.ok) throw new Error();
+      const d = await r.json();
+      const followers = d.followers_count ?? d.followersCount ?? null;
+      const subs = d.subscribers_count ?? d.subscriberCount ?? null;
+      if (followers !== null) {
+        document.getElementById('followers').textContent = formatNum(followers);
+        if (lastFollowers !== null && followers > lastFollowers) {
+          flashValue(document.getElementById('followers'));
+          showAlert('🎉', followers - lastFollowers === 1 ? 'New follower!' : `+${followers - lastFollowers} new followers!`);
+        }
+        lastFollowers = followers;
+      }
+      if (subs !== null) {
+        document.getElementById('subs').textContent = formatNum(subs);
+        if (lastSubs !== null && subs > lastSubs) {
+          flashValue(document.getElementById('subs'));
+          showAlert('⭐', 'New subscriber!');
+        }
+        lastSubs = subs;
+      }
+      updateGoals(followers, subs);
+    } catch {}
+  }
+
+  // ── Twitch stats (via Cloudflare Worker, secret stays server-side) ──
+  async function fetchTwitchStats() {
+    try {
+      const r = await fetch(WORKER_URL + '/twitch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: TWITCH_USERNAME })
+      });
+      const d = await r.json();
+
+      if (typeof d.followers === 'number') {
+        document.getElementById('twitch-followers').textContent = formatNum(d.followers);
+        if (lastTwitchFollowers !== null && d.followers > lastTwitchFollowers) {
+          flashValue(document.getElementById('twitch-followers'));
+          showAlert('💜', 'New Twitch follower!');
+        }
+        lastTwitchFollowers = d.followers;
+      }
+      if (typeof d.subs === 'number') {
+        document.getElementById('twitch-subs').textContent = formatNum(d.subs);
+        if (lastTwitchSubs !== null && d.subs > lastTwitchSubs) {
+          flashValue(document.getElementById('twitch-subs'));
+          showAlert('💜', 'New Twitch sub!');
+        }
+        lastTwitchSubs = d.subs;
+      }
+    } catch {}
+  }
+
+  // ── YouTube stats ──────────────────────────────────────
+  async function fetchYouTubeStats() {
+    try {
+      // Look up channel by handle if we don't have the ID yet
+      if (!ytChannelId) {
+        const r = await fetch(
+          `https://www.googleapis.com/youtube/v3/channels?part=id,statistics&forHandle=${YT_CHANNEL_HANDLE}&key=${YT_API_KEY}`
+        );
+        const d = await r.json();
+        ytChannelId = d.items?.[0]?.id || null;
+        const stats = d.items?.[0]?.statistics;
+        if (stats?.subscriberCount) {
+          document.getElementById('yt-subs').textContent = formatNum(parseInt(stats.subscriberCount));
+        }
+        return;
+      }
+      // Refresh stats using cached channel ID
+      const r = await fetch(
+        `https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${ytChannelId}&key=${YT_API_KEY}`
+      );
+      const d = await r.json();
+      const stats = d.items?.[0]?.statistics;
+      if (stats?.subscriberCount) {
+        document.getElementById('yt-subs').textContent = formatNum(parseInt(stats.subscriberCount));
+      }
+    } catch {}
+  }
+
+  function formatNum(n) {
+    if (typeof n !== 'number' || isNaN(n)) return '--';
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+    return n.toString();
+  }
+
+  fetchKickStats();
+  fetchTwitchStats();
+  fetchYouTubeStats();
+  setInterval(fetchKickStats, 30000);
+  setInterval(fetchTwitchStats, 60000);
+  setInterval(fetchYouTubeStats, 5 * 60 * 1000);
+
+  // ── Kick OAuth (PKCE) ──────────────────────────────────
+  function generateCodeVerifier() {
+    const a = new Uint8Array(32);
+    crypto.getRandomValues(a);
+    return btoa(String.fromCharCode(...a)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+  }
+  async function generateCodeChallenge(v) {
+    const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(v));
+    return btoa(String.fromCharCode(...new Uint8Array(d))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+  }
+
+  async function kickLogin() {
+    const verifier = generateCodeVerifier();
+    const challenge = await generateCodeChallenge(verifier);
+    localStorage.setItem('kick_verifier', verifier);
+    const scope = 'channel:read chat:read';
+    window.location.href = `https://id.kick.com/oauth/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=${encodeURIComponent(scope)}&code_challenge=${challenge}&code_challenge_method=S256&state=kick`;
+  }
+
+  async function handleOAuthCallback() {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const state = params.get('state');
+    if (!code || state !== 'kick') return;
+    const verifier = localStorage.getItem('kick_verifier');
+    if (!verifier) return;
+    window.history.replaceState(null, '', window.location.pathname);
+    try {
+      const r = await fetch(WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, code_verifier: verifier })
+      });
+      const data = await r.json();
+      if (data.access_token) {
+        localStorage.setItem('kick_token', data.access_token);
+        if (data.refresh_token) localStorage.setItem('kick_refresh', data.refresh_token);
+        localStorage.removeItem('kick_verifier');
+        connectChat(data.access_token);
+      }
+    } catch {}
+  }
+
+  async function refreshToken() {
+    const refresh = localStorage.getItem('kick_refresh');
+    if (!refresh) return null;
+    try {
+      const r = await fetch(WORKER_URL + '/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refresh })
+      });
+      const data = await r.json();
+      if (data.access_token) {
+        localStorage.setItem('kick_token', data.access_token);
+        if (data.refresh_token) localStorage.setItem('kick_refresh', data.refresh_token);
+        return data.access_token;
+      }
+    } catch {}
+    return null;
+  }
+
+  let kickChatroomId = null;
+  let lastProcessedCmd = null;
+
+  async function pollCommandsFromWorker() {
+    try {
+      // Tell worker to fetch latest chat from Kick server-side
+      await fetch(WORKER_URL + '/listen-chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      // Get any pending commands the worker found
+      const r = await fetch(WORKER_URL + '/commands');
+      const d = await r.json();
+      const commands = d.commands ?? [];
+      commands.forEach(cmd => handleChatCommand(cmd));
+    } catch {}
+  }
+
+  function connectChat(token) {
+    document.getElementById('login-btn').style.display = 'none';
+    document.getElementById('connected-badge').style.display = 'block';
+    // Poll worker every 3 seconds for new commands
+    pollCommandsFromWorker();
+    setInterval(pollCommandsFromWorker, 3000);
+  }
+
+  // ── YouTube OAuth (PKCE via Worker) ───────────────────
+  async function youtubeLogin() {
+    const verifier = generateCodeVerifier();
+    const challenge = await generateCodeChallenge(verifier);
+    localStorage.setItem('yt_verifier', verifier);
+    const scope = 'https://www.googleapis.com/auth/youtube.readonly';
+    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${YT_OAUTH_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=${encodeURIComponent(scope)}&code_challenge=${challenge}&code_challenge_method=S256&access_type=offline&prompt=consent&state=youtube`;
+  }
+
+  async function handleYouTubeOAuthCallback() {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const state = params.get('state');
+    if (!code || state !== 'youtube') return;
+    const verifier = localStorage.getItem('yt_verifier');
+    if (!verifier) return;
+    window.history.replaceState(null, '', window.location.pathname);
+    try {
+      const r = await fetch(WORKER_URL + '/youtube-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, code_verifier: verifier })
+      });
+      const data = await r.json();
+      if (data.access_token) {
+        localStorage.setItem('yt_token', data.access_token);
+        if (data.refresh_token) localStorage.setItem('yt_refresh', data.refresh_token);
+        localStorage.removeItem('yt_verifier');
+        connectYouTube(data.access_token);
+      }
+    } catch {}
+  }
+
+  async function refreshYouTubeToken() {
+    const refresh = localStorage.getItem('yt_refresh');
+    if (!refresh) return null;
+    try {
+      const r = await fetch(WORKER_URL + '/youtube-refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refresh })
+      });
+      const data = await r.json();
+      if (data.access_token) {
+        localStorage.setItem('yt_token', data.access_token);
+        return data.access_token;
+      }
+    } catch {}
+    return null;
+  }
+
+  function connectYouTube(token) {
+    document.getElementById('yt-login-btn').style.display = 'none';
+    document.getElementById('yt-connected-badge').style.display = 'block';
+    findLiveBroadcastAndPoll(token);
+  }
+
+  // Find the current live broadcast's chat ID, then start polling for member joins
+  async function findLiveBroadcastAndPoll(token) {
+    try {
+      const r = await fetch(
+        'https://www.googleapis.com/youtube/v3/liveBroadcasts?part=snippet&broadcastStatus=active&broadcastType=all',
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (r.status === 401) {
+        const newToken = await refreshYouTubeToken();
+        if (newToken) return findLiveBroadcastAndPoll(newToken);
+        return;
+      }
+      const d = await r.json();
+      const chatId = d.items?.[0]?.snippet?.liveChatId;
+      if (chatId) {
+        ytLiveChatId = chatId;
+        pollYouTubeMembers(token);
+      } else {
+        // Not live yet — check again in 60s
+        setTimeout(() => findLiveBroadcastAndPoll(token), 60000);
+      }
+    } catch {
+      setTimeout(() => findLiveBroadcastAndPoll(token), 60000);
+    }
+  }
+
+  // Poll live chat for "new member" events
+  async function pollYouTubeMembers(token) {
+    if (!ytLiveChatId) return;
+    try {
+      let url = `https://www.googleapis.com/youtube/v3/liveChat/messages?liveChatId=${ytLiveChatId}&part=snippet,authorDetails`;
+      if (ytNextPageToken) url += `&pageToken=${ytNextPageToken}`;
+      const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (r.status === 401) {
+        const newToken = await refreshYouTubeToken();
+        if (newToken) return pollYouTubeMembers(newToken);
+        return;
+      }
+      const d = await r.json();
+      ytNextPageToken = d.nextPageToken;
+
+      const items = d.items || [];
+      items.forEach(item => {
+        if (item.snippet?.type === 'newSponsorEvent') {
+          ytMemberCount++;
+          document.getElementById('yt-members').textContent = formatNum(ytMemberCount);
+          flashValue(document.getElementById('yt-members'));
+          showAlert('🔴', 'New YouTube member!');
+        }
+      });
+
+      const pollMs = Math.max(d.pollingIntervalMillis || 5000, 5000);
+      ytPollTimer = setTimeout(() => pollYouTubeMembers(token), pollMs);
+    } catch {
+      ytPollTimer = setTimeout(() => pollYouTubeMembers(token), 10000);
+    }
+  }
+
+  // ── Chat commands ──────────────────────────────────────
+  function handleChatCommand(text) {
+    const parts = text.trim().split(/\s+/);
+    const cmd = parts[0]?.toLowerCase();
+
+    if (cmd === '!followgoal' || (cmd === '!goal' && parts[1]?.toLowerCase() === 'followers')) {
+      const val = parseInt(cmd === '!goal' ? parts[2] : parts[1]);
+      if (!isNaN(val) && val > 0) { followerGoal = val; showAlert('🎯', `Follower goal: ${val}`); fetchKickStats(); }
+    }
+    else if (cmd === '!subgoal' || (cmd === '!goal' && parts[1]?.toLowerCase() === 'subs')) {
+      const val = parseInt(cmd === '!goal' ? parts[2] : parts[1]);
+      if (!isNaN(val) && val > 0) { subGoal = val; showAlert('🎯', `Sub goal: ${val}`); fetchKickStats(); }
+    }
+    else if (cmd === '!subcount') {
+      const val = parseInt(parts[1]);
+      if (!isNaN(val)) { document.getElementById('subs').textContent = formatNum(val); updateGoals(lastFollowers, val); }
+    }
+    else if (cmd === '!toggletime')     toggleSection('sec-time');
+    else if (cmd === '!togglelocation') toggleSection('sec-location');
+    else if (cmd === '!toggleweather')  toggleSection('sec-weather');
+    else if (cmd === '!togglekick')     toggleSection('sec-kick');
+    else if (cmd === '!togglesubs')     { const el = document.getElementById('block-subs'); if(el) el.classList.toggle('hidden'); }
+    else if (cmd === '!togglefollows')  { const el = document.getElementById('block-followers'); if(el) el.classList.toggle('hidden'); }
+    else if (cmd === '!togglegoal')     toggleSection('sec-goals');
+    else if (cmd === '!toggletwitch')   toggleSection('sec-twitch');
+    else if (cmd === '!toggleyoutube')  toggleSection('sec-youtube');
+    else if (cmd === '!privacy') {
+      const level = parts[1]?.toLowerCase();
+      const idx = PRIVACY_LEVELS.indexOf(level);
+      if (idx !== -1) {
+        privacyIdx = idx;
+        document.getElementById('location-toggle').textContent = level;
+        if (lastAddress) displayLocation(lastAddress, level);
+        showAlert('📍', `Location: ${level}`);
+      }
+    }
+    else if (cmd === '!lang') {
+      const map = { english:'en', french:'fr', spanish:'es', portuguese:'pt', german:'de', italian:'it', japanese:'ja', korean:'ko', dutch:'nl', russian:'ru', chinese:'zh', arabic:'ar', turkish:'tr', swedish:'sv', polish:'pl' };
+      const lang = parts[1]?.toLowerCase();
+      if (map[lang]) { weatherLang = map[lang]; if (coords) fetchWeather(coords.lat, coords.lon); showAlert('🌍', `Weather: ${parts[1]}`); }
+    }
+    else if (cmd === '!position') {
+      const pos = parts[1]?.toLowerCase();
+      const valid = ['top-left','top-right','bottom-left','bottom-right'];
+      if (valid.includes(pos)) {
+        setPosition(pos);
+        showAlert('📐', `Position: ${pos}`);
+      }
+    }
+    else if (cmd === '!ytmembers') {
+      const val = parseInt(parts[1]);
+      if (!isNaN(val)) { ytMemberCount = val; document.getElementById('yt-members').textContent = formatNum(val); }
+    }
+    else if (cmd === '!resetgeosense') {
+      followerGoal = 100; subGoal = 10; privacyIdx = 0; weatherLang = 'en'; timeFormat = '12s';
+      ytMemberCount = 0;
+      document.getElementById('yt-members').textContent = '--';
+      document.getElementById('location-toggle').textContent = 'city';
+      // Reset all sections visible
+      ['sec-time','sec-location','sec-weather','sec-kick','sec-twitch','sec-youtube','sec-goals'].forEach(id => {
+        document.getElementById(id)?.classList.remove('hidden');
+      });
+      ['block-followers','block-subs'].forEach(id => document.getElementById(id)?.classList.remove('hidden'));
+      setPosition('top-left');
+      fetchKickStats();
+      showAlert('🔄', 'Overlay reset!');
+    }
+  }
+
+  // ── Init ───────────────────────────────────────────────
+  handleOAuthCallback();
+  handleYouTubeOAuthCallback();
+  const savedToken = localStorage.getItem('kick_token');
+  if (savedToken) connectChat(savedToken);
+  const savedYtToken = localStorage.getItem('yt_token');
+  if (savedYtToken) connectYouTube(savedYtToken);
+</script>
+</body>
+</html>
